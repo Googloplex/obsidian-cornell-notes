@@ -12,7 +12,7 @@ export interface CornellSettings {
 }
 
 export const DEFAULT_SETTINGS: CornellSettings = {
-  defaultFolder: "",
+  defaultFolder: "Cornell Notes",
 };
 
 // ─── Settings Tab ────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ export class CornellSettingsTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.defaultFolder = value.trim();
             await this.plugin.saveSettings();
+            await this.plugin.ensureRootFolder();
           })
       );
   }

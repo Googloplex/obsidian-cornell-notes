@@ -45,6 +45,8 @@ export default class CornellNotesPlugin extends Plugin {
     this.registerRibbonIcon();
     this.registerContextMenu();
 
+    this.app.workspace.onLayoutReady(() => this.ensureRootFolder());
+
     console.log("Cornell Notes plugin loaded");
   }
 
@@ -126,14 +128,18 @@ export default class CornellNotesPlugin extends Plugin {
   // Actions
   // ═══════════════════════════════════════════════════════════════════════
 
-  private openCreateModal(): void {
-    const activeFile = this.app.workspace.getActiveFile();
-    const defaultFolder =
-      activeFile?.parent?.path ?? this.settings.defaultFolder ?? "";
+  async ensureRootFolder(): Promise<void> {
+    const folder = this.settings.defaultFolder;
+    if (!folder) return;
+    if (!this.app.vault.getAbstractFileByPath(folder)) {
+      await this.app.vault.createFolder(folder);
+    }
+  }
 
+  private openCreateModal(): void {
     new CreateCornellNoteModal(
       this.app,
-      defaultFolder,
+      this.settings.defaultFolder,
       (name, folder) => this.createCornellNote(name, folder)
     ).open();
   }
