@@ -1,0 +1,349 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cornell Notes Plugin — Styles
+   Three-panel layout: Cues (left) | Notes (right) | Summary (bottom)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Container ──────────────────────────────────────────────────────────── */
+
+.cornell-notes-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  font-family: var(--font-text);
+  background: var(--background-primary);
+}
+
+/* ── Title Bar ──────────────────────────────────────────────────────────── */
+
+.cornell-title-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 2px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  flex-shrink: 0;
+}
+
+.cornell-title-input {
+  flex: 1;
+  font-size: 1.3em;
+  font-weight: 700;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-normal);
+  padding: 4px 0;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.cornell-title-input:focus {
+  border-bottom-color: var(--interactive-accent);
+}
+
+.cornell-title-input::placeholder {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.cornell-tags-input {
+  width: 250px;
+  font-size: 0.85em;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.cornell-tags-input:focus {
+  border-color: var(--interactive-accent);
+}
+
+.cornell-tags-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ── Main Area (Cues + Notes) ───────────────────────────────────────────── */
+
+.cornell-main-area {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Panels ─────────────────────────────────────────────────────────────── */
+
+.cornell-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cornell-cues-panel {
+  width: 280px;
+  min-width: 150px;
+  flex-shrink: 0;
+  border-right: none;
+  background: var(--background-secondary);
+}
+
+.cornell-notes-panel {
+  flex: 1;
+  min-width: 200px;
+  background: var(--background-primary);
+}
+
+/* ── Panel Headers ──────────────────────────────────────────────────────── */
+
+.cornell-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.cornell-panel-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 700;
+}
+
+.cornell-cues-panel .cornell-panel-icon {
+  background: rgba(var(--color-yellow-rgb, 224, 172, 0), 0.2);
+  color: var(--color-yellow, #e0ac00);
+}
+
+.cornell-notes-panel .cornell-panel-icon {
+  background: rgba(var(--color-blue-rgb, 0, 122, 204), 0.2);
+  color: var(--color-blue, #007acc);
+}
+
+.cornell-summary-panel .cornell-panel-icon {
+  background: rgba(var(--color-green-rgb, 0, 180, 80), 0.2);
+  color: var(--color-green, #00b450);
+}
+
+/* ── Editors (Textareas) ────────────────────────────────────────────────── */
+
+.cornell-editor {
+  flex: 1;
+  width: 100%;
+  padding: 16px;
+  font-family: var(--font-text);
+  font-size: var(--font-text-size, 15px);
+  line-height: 1.65;
+  color: var(--text-normal);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.cornell-cues-editor {
+  font-size: 0.92em;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+.cornell-cues-editor:focus {
+  color: var(--text-normal);
+}
+
+.cornell-notes-editor {
+  font-size: var(--font-text-size, 15px);
+}
+
+.cornell-summary-editor {
+  min-height: 60px;
+  max-height: 200px;
+  font-size: 0.95em;
+  font-style: italic;
+}
+
+.cornell-editor::placeholder {
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+
+.cornell-editor:focus::placeholder {
+  opacity: 0.3;
+}
+
+/* Focus highlight */
+.cornell-editor:focus {
+  background: rgba(var(--color-accent-rgb, 0, 122, 204), 0.03);
+}
+
+/* Scrollbar styling */
+.cornell-editor::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cornell-editor::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+}
+
+.cornell-editor::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+/* ── Divider (draggable) ────────────────────────────────────────────────── */
+
+.cornell-divider {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--background-modifier-border);
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.cornell-divider:hover,
+.cornell-divider-active {
+  background: var(--interactive-accent);
+}
+
+.cornell-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 30px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cornell-divider:hover::after {
+  opacity: 0.5;
+}
+
+/* ── Summary Panel ──────────────────────────────────────────────────────── */
+
+.cornell-summary-panel {
+  border-top: 2px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  flex-shrink: 0;
+}
+
+/* ── Status Bar ─────────────────────────────────────────────────────────── */
+
+.cornell-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 6px 20px;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.cornell-status-item {
+  white-space: nowrap;
+}
+
+/* ── Export preview ─────────────────────────────────────────────────────── */
+
+.cornell-export-preview {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  color: var(--text-normal);
+  padding: 12px;
+  margin: 12px 0;
+}
+
+/* ── File explorer icon ─────────────────────────────────────────────────── */
+
+.nav-file-title[data-path$=".cornell"] .nav-file-title-content::before {
+  content: "📋 ";
+}
+
+/* ── Responsive: narrow width ───────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+  .cornell-main-area {
+    flex-direction: column;
+  }
+
+  .cornell-cues-panel {
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 2px solid var(--background-modifier-border);
+    max-height: 30vh;
+  }
+
+  .cornell-divider {
+    display: none;
+  }
+
+  .cornell-title-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cornell-tags-input {
+    width: 100%;
+  }
+}
+
+/* ── Print styles ───────────────────────────────────────────────────────── */
+
+@media print {
+  .cornell-notes-container {
+    background: white;
+    color: black;
+  }
+
+  .cornell-status-bar {
+    display: none;
+  }
+
+  .cornell-divider {
+    background: #ccc;
+    cursor: default;
+  }
+
+  .cornell-panel-header {
+    color: #666;
+    border-color: #ccc;
+  }
+
+  .cornell-editor {
+    color: black;
+  }
+
+  .cornell-summary-panel {
+    border-color: #ccc;
+  }
+}
