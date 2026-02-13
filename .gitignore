@@ -1,6 +1,7 @@
 ﻿node_modules/
 dist/
 main.js
+release/
 *.js.map
 .obsidian/
 files_55/
