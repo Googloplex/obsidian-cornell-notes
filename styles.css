@@ -229,23 +229,54 @@
   opacity: 0.5;
 }
 
+/* ── Summary Divider (horizontal, draggable) ───────────────────────────── */
+
+.cornell-divider-horizontal {
+  height: 5px;
+  cursor: row-resize;
+  background: var(--background-modifier-border);
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.cornell-divider-horizontal:hover,
+.cornell-divider-horizontal-active {
+  background: var(--interactive-accent);
+}
+
+.cornell-divider-horizontal::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cornell-divider-horizontal:hover::after {
+  opacity: 0.5;
+}
+
 /* ── Summary Panel ──────────────────────────────────────────────────────── */
 
 .cornell-summary-panel {
   display: flex;
   flex-direction: column;
-  border-top: 2px solid var(--background-modifier-border);
+  border-top: none;
   background: var(--background-secondary);
   flex-shrink: 0;
-}
-
-.cornell-summary-panel .cornell-panel-content {
-  min-height: 120px;
-  max-height: 300px;
+  height: 180px;
+  overflow: hidden;
 }
 
 .cornell-summary-panel .cornell-panel-content .cm-editor {
-  min-height: 120px;
+  min-height: 60px;
 }
 
 /* ── Status Bar ─────────────────────────────────────────────────────────── */

@@ -106,6 +106,7 @@ export class CornellNotesView extends TextFileView {
 
     this.buildTitleBar(contentEl);
     this.buildMainArea(contentEl);
+    this.buildSummaryDivider(contentEl);
     this.buildSummaryPanel(contentEl);
     this.buildStatusBar(contentEl);
 
@@ -174,6 +175,11 @@ export class CornellNotesView extends TextFileView {
     this.buildSectionPanel(main, "notes", "cornell-panel cornell-notes-panel");
   }
 
+  private buildSummaryDivider(parent: HTMLElement): void {
+    const divider = parent.createDiv({ cls: "cornell-divider-horizontal" });
+    this.setupSummaryDividerDrag(divider, parent);
+  }
+
   private buildSummaryPanel(parent: HTMLElement): void {
     this.buildSectionPanel(parent, "summary", "cornell-summary-panel");
   }
@@ -225,7 +231,7 @@ export class CornellNotesView extends TextFileView {
       this.savePanelContent(panel);
     }, 1000, true);
 
-    // Tab = navigate panels, Ctrl+Tab is left for Obsidian tab switching
+    // Tab = navigate panels, Shift+Tab = insert tab character
     const tabExtension = Prec.highest(
       keymap.of([
         {
@@ -234,8 +240,11 @@ export class CornellNotesView extends TextFileView {
             this.focusNextPanel(panel.key, false);
             return true;
           },
-          shift: () => {
-            this.focusNextPanel(panel.key, true);
+        },
+        {
+          key: "Shift-Tab",
+          run: (view) => {
+            view.dispatch(view.state.replaceSelection("\t"));
             return true;
           },
         },
@@ -425,6 +434,43 @@ export class CornellNotesView extends TextFileView {
       divider.removeClass("cornell-divider-active");
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    divider.addEventListener("mousedown", onMouseDown);
+  }
+
+  private setupSummaryDividerDrag(
+    divider: HTMLElement,
+    container: HTMLElement
+  ): void {
+    let startY = 0;
+    let startHeight = 0;
+    let summaryPanel: HTMLElement | null = null;
+
+    const onMouseDown = (e: MouseEvent) => {
+      summaryPanel = container.querySelector(".cornell-summary-panel") as HTMLElement;
+      if (!summaryPanel) return;
+      startY = e.clientY;
+      startHeight = summaryPanel.offsetHeight;
+      divider.addClass("cornell-divider-horizontal-active");
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      e.preventDefault();
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!summaryPanel) return;
+      const delta = startY - e.clientY; // dragging up = larger summary
+      const newHeight = Math.max(80, Math.min(startHeight + delta, container.offsetHeight - 200));
+      summaryPanel.style.height = `${newHeight}px`;
+      summaryPanel.style.flexShrink = "0";
+    };
+
+    const onMouseUp = () => {
+      divider.removeClass("cornell-divider-horizontal-active");
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      summaryPanel = null;
     };
 
     divider.addEventListener("mousedown", onMouseDown);
