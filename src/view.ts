@@ -1,32 +1,44 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// Cornell Notes — View (Three-panel editor)
+// Cornell Notes — View (Three-panel editor with .md file backing)
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { TextFileView, WorkspaceLeaf } from "obsidian";
+import { TextFileView, WorkspaceLeaf, TFile, MarkdownRenderer } from "obsidian";
 import {
   CORNELL_VIEW_TYPE,
   CORNELL_ICON,
-  CornellData,
-  createEmptyData,
-  parseData,
-  serializeData,
+  SectionKey,
+  SECTIONS,
+  SECTION_KEYS,
+  CornellManifest,
+  createManifest,
+  parseManifest,
+  serializeManifest,
+  sectionFilePath,
+  stripFrontmatter,
   formatDate,
   countWords,
 } from "./types";
 
-export class CornellNotesView extends TextFileView {
-  private data: CornellData = createEmptyData();
+// ─── Section panel state ─────────────────────────────────────────────────
 
-  // ── DOM references ──
-  private cuesEditor: HTMLTextAreaElement | null = null;
-  private notesEditor: HTMLTextAreaElement | null = null;
-  private summaryEditor: HTMLTextAreaElement | null = null;
+interface SectionPanel {
+  key: SectionKey;
+  container: HTMLElement;
+  renderEl: HTMLElement;
+  editorEl: HTMLTextAreaElement;
+  editing: boolean;
+  content: string;      // raw markdown (without frontmatter)
+  fullContent: string;  // full file content (with frontmatter)
+  file: TFile | null;
+}
+
+export class CornellNotesView extends TextFileView {
+  private manifest: CornellManifest = createManifest("");
+  private panels: Map<SectionKey, SectionPanel> = new Map();
   private titleEditor: HTMLInputElement | null = null;
   private tagsEditor: HTMLInputElement | null = null;
   private statusBarEl: HTMLElement | null = null;
-
-  // ── State ──
-  private isLoading: boolean = false;
+  private isLoading = false;
 
   // ═══════════════════════════════════════════════════════════════════════
   // TextFileView interface
@@ -37,39 +49,34 @@ export class CornellNotesView extends TextFileView {
   }
 
   getDisplayText(): string {
-    return this.data.title || this.file?.basename || "Cornell Notes";
+    return this.manifest.title || this.file?.basename || "Cornell Notes";
   }
 
   getIcon(): string {
     return CORNELL_ICON;
   }
 
-  /**
-   * Called by Obsidian to get the current file content for saving.
-   * This is the ONLY place where data leaves the editor → file.
-   */
   getViewData(): string {
-    return serializeData(this.data);
+    return serializeManifest(this.manifest);
   }
 
-  /**
-   * Called by Obsidian when file content is loaded or changed externally.
-   * This is the ONLY place where data enters the editor from file.
-   */
   setViewData(data: string, clear: boolean): void {
     this.isLoading = true;
-
-    this.data = parseData(data);
-    this.syncDataToEditors();
-    this.refreshStatusBar();
-
+    this.manifest = parseManifest(data);
+    this.syncManifestToUI();
+    this.loadSectionFiles();
     this.isLoading = false;
   }
 
   clear(): void {
-    this.data = createEmptyData();
-    this.syncDataToEditors();
-    this.refreshStatusBar();
+    this.manifest = createManifest("");
+    this.syncManifestToUI();
+    for (const panel of this.panels.values()) {
+      panel.content = "";
+      panel.fullContent = "";
+      panel.file = null;
+      this.renderPanel(panel);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -85,186 +92,281 @@ export class CornellNotesView extends TextFileView {
     this.buildMainArea(contentEl);
     this.buildSummaryPanel(contentEl);
     this.buildStatusBar(contentEl);
-    this.setupTabNavigation();
+
+    // Watch for external file changes
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (!(file instanceof TFile)) return;
+        for (const panel of this.panels.values()) {
+          if (panel.file && panel.file.path === file.path && !panel.editing) {
+            this.loadPanelContent(panel);
+          }
+        }
+      })
+    );
   }
 
   async onClose(): Promise<void> {
-    // Nothing to clean up — Obsidian handles save on close
+    // Save any panel that's still in editing mode
+    for (const panel of this.panels.values()) {
+      if (panel.editing) {
+        await this.commitPanelEdit(panel);
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
   // UI Construction
   // ═══════════════════════════════════════════════════════════════════════
 
-  /**
-   * Title + Tags bar at the top
-   */
   private buildTitleBar(parent: HTMLElement): void {
     const bar = parent.createDiv({ cls: "cornell-title-bar" });
 
-    // Title input
     this.titleEditor = bar.createEl("input", {
       cls: "cornell-title-input",
       attr: { type: "text", placeholder: "Заголовок конспекта..." },
     });
     this.titleEditor.addEventListener("input", () => {
-      this.data.title = this.titleEditor!.value;
-      this.onContentChanged();
+      this.manifest.title = this.titleEditor!.value;
+      this.onManifestChanged();
     });
 
-    // Tags input
     this.tagsEditor = bar.createEl("input", {
       cls: "cornell-tags-input",
       attr: { type: "text", placeholder: "Теги: #тег1, #тег2..." },
     });
     this.tagsEditor.addEventListener("input", () => {
-      this.data.tags = this.tagsEditor!.value
+      this.manifest.tags = this.tagsEditor!.value
         .split(",")
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
-      this.onContentChanged();
+      this.onManifestChanged();
     });
   }
 
-  /**
-   * Main area: Cues (left) | Divider | Notes (right)
-   */
   private buildMainArea(parent: HTMLElement): void {
     const main = parent.createDiv({ cls: "cornell-main-area" });
 
-    // ── Left: Cues / Questions / Ideas ──
-    const cuesPanel = main.createDiv({
-      cls: "cornell-panel cornell-cues-panel",
-    });
-    this.buildPanelHeader(cuesPanel, "?", "Вопросы / Идеи");
+    this.buildSectionPanel(main, "cues", "cornell-panel cornell-cues-panel");
 
-    this.cuesEditor = cuesPanel.createEl("textarea", {
-      cls: "cornell-editor cornell-cues-editor",
-      attr: {
-        placeholder:
-          "• Ключевые вопросы\n• Идеи и ассоциации\n• Термины\n• Связи с другими темами",
-        spellcheck: "true",
-      },
-    });
-    this.cuesEditor.addEventListener("input", () => {
-      this.data.cues = this.cuesEditor!.value;
-      this.onContentChanged();
-    });
-
-    // ── Draggable divider ──
     const divider = main.createDiv({ cls: "cornell-divider" });
+    const cuesPanel = main.querySelector(".cornell-cues-panel") as HTMLElement;
     this.setupDividerDrag(divider, main, cuesPanel);
 
-    // ── Right: Notes ──
-    const notesPanel = main.createDiv({
-      cls: "cornell-panel cornell-notes-panel",
-    });
-    this.buildPanelHeader(notesPanel, "✎", "Конспект");
-
-    this.notesEditor = notesPanel.createEl("textarea", {
-      cls: "cornell-editor cornell-notes-editor",
-      attr: {
-        placeholder:
-          "Основные записи лекции / материала...\n\nИспользуйте отступы и структуру для организации.",
-        spellcheck: "true",
-      },
-    });
-    this.notesEditor.addEventListener("input", () => {
-      this.data.notes = this.notesEditor!.value;
-      this.onContentChanged();
-    });
+    this.buildSectionPanel(main, "notes", "cornell-panel cornell-notes-panel");
   }
 
-  /**
-   * Summary strip at the bottom
-   */
   private buildSummaryPanel(parent: HTMLElement): void {
-    const panel = parent.createDiv({ cls: "cornell-summary-panel" });
-    this.buildPanelHeader(panel, "Σ", "Резюме");
-
-    this.summaryEditor = panel.createEl("textarea", {
-      cls: "cornell-editor cornell-summary-editor",
-      attr: {
-        placeholder: "Краткое резюме — основные выводы и суть конспекта...",
-        spellcheck: "true",
-      },
-    });
-    this.summaryEditor.addEventListener("input", () => {
-      this.data.summary = this.summaryEditor!.value;
-      this.onContentChanged();
-    });
+    this.buildSectionPanel(parent, "summary", "cornell-summary-panel");
   }
 
-  /**
-   * Panel header with icon and label
-   */
-  private buildPanelHeader(
-    parent: HTMLElement,
-    icon: string,
-    label: string
-  ): void {
-    const header = parent.createDiv({ cls: "cornell-panel-header" });
-    header.createSpan({ cls: "cornell-panel-icon", text: icon });
-    header.createSpan({ text: label });
+  private buildSectionPanel(parent: HTMLElement, key: SectionKey, cls: string): void {
+    const section = SECTIONS[key];
+    const container = parent.createDiv({ cls });
+
+    // Header
+    const header = container.createDiv({ cls: "cornell-panel-header" });
+    const iconCls = key === "cues" ? "?" : key === "notes" ? "✎" : "Σ";
+    header.createSpan({ cls: "cornell-panel-icon", text: iconCls });
+    header.createSpan({ text: section.label });
+
+    // Content area — holds both render and editor
+    const contentArea = container.createDiv({ cls: "cornell-panel-content" });
+
+    // Rendered markdown (visible by default)
+    const renderEl = contentArea.createDiv({ cls: "cornell-render" });
+
+    // Textarea editor (hidden by default)
+    const editorEl = contentArea.createEl("textarea", {
+      cls: "cornell-editor cornell-editor-hidden",
+      attr: { spellcheck: "true" },
+    });
+
+    const panel: SectionPanel = {
+      key,
+      container,
+      renderEl,
+      editorEl,
+      editing: false,
+      content: "",
+      fullContent: "",
+      file: null,
+    };
+
+    // Click rendered area → enter editing
+    renderEl.addEventListener("click", () => this.enterEditMode(panel));
+
+    // Blur editor → save and render
+    editorEl.addEventListener("blur", () => this.commitPanelEdit(panel));
+
+    // Tab navigation between panels
+    editorEl.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Tab" && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        const keys = SECTION_KEYS;
+        const idx = keys.indexOf(key);
+        const step = e.shiftKey ? -1 : 1;
+        const nextKey = keys[(idx + step + keys.length) % keys.length];
+        const nextPanel = this.panels.get(nextKey);
+        if (nextPanel) this.enterEditMode(nextPanel);
+      }
+    });
+
+    this.panels.set(key, panel);
   }
 
-  /**
-   * Status bar: word count, dates
-   */
   private buildStatusBar(parent: HTMLElement): void {
     this.statusBarEl = parent.createDiv({ cls: "cornell-status-bar" });
     this.refreshStatusBar();
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Save & Sync
+  // Section file I/O
   // ═══════════════════════════════════════════════════════════════════════
 
-  /**
-   * Called on every keystroke in any editor field.
-   * Immediately marks the file as dirty — Obsidian will persist it
-   * on its own schedule (identical to how .md files auto-save).
-   */
-  private onContentChanged(): void {
-    if (this.isLoading) return;
+  private loadSectionFiles(): void {
+    if (!this.file) return;
+    const folderPath = this.file.parent?.path;
+    const baseName = this.manifest.title || this.file.basename;
+    if (!folderPath) return;
 
-    this.data.modified = new Date().toISOString();
-    this.requestSave(); // Obsidian's native save — same as markdown notes
+    for (const key of SECTION_KEYS) {
+      const panel = this.panels.get(key);
+      if (!panel) continue;
+
+      const path = sectionFilePath(folderPath, baseName, key);
+      const file = this.app.vault.getAbstractFileByPath(path);
+
+      if (file instanceof TFile) {
+        panel.file = file;
+        this.loadPanelContent(panel);
+      } else {
+        panel.file = null;
+        panel.content = "";
+        panel.fullContent = "";
+        this.renderPanel(panel);
+      }
+    }
+  }
+
+  private async loadPanelContent(panel: SectionPanel): Promise<void> {
+    if (!panel.file) return;
+    const raw = await this.app.vault.read(panel.file);
+    panel.fullContent = raw;
+    panel.content = stripFrontmatter(raw);
+    this.renderPanel(panel);
     this.refreshStatusBar();
   }
 
-  /**
-   * Push data model → DOM (used when file is loaded or changed externally)
-   */
-  private syncDataToEditors(): void {
-    if (this.titleEditor) this.titleEditor.value = this.data.title;
-    if (this.tagsEditor) this.tagsEditor.value = this.data.tags.join(", ");
-    if (this.cuesEditor) this.cuesEditor.value = this.data.cues;
-    if (this.notesEditor) this.notesEditor.value = this.data.notes;
-    if (this.summaryEditor) this.summaryEditor.value = this.data.summary;
+  private async savePanelContent(panel: SectionPanel): Promise<void> {
+    if (!panel.file) return;
+
+    // Preserve frontmatter, replace body
+    const fmMatch = panel.fullContent.match(/^(---\n[\s\S]*?\n---\n?)/);
+    const frontmatter = fmMatch ? fmMatch[1] : "";
+    const newFull = frontmatter + panel.content;
+
+    panel.fullContent = newFull;
+    await this.app.vault.modify(panel.file, newFull);
   }
 
-  /**
-   * Refresh the status bar with current metadata
-   */
+  // ═══════════════════════════════════════════════════════════════════════
+  // Edit mode
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private enterEditMode(panel: SectionPanel): void {
+    if (panel.editing) return;
+    panel.editing = true;
+
+    panel.renderEl.addClass("cornell-render-hidden");
+    panel.editorEl.removeClass("cornell-editor-hidden");
+    panel.editorEl.value = panel.content;
+    panel.editorEl.focus();
+  }
+
+  private async commitPanelEdit(panel: SectionPanel): Promise<void> {
+    if (!panel.editing) return;
+    panel.editing = false;
+
+    panel.content = panel.editorEl.value;
+    panel.editorEl.addClass("cornell-editor-hidden");
+    panel.renderEl.removeClass("cornell-render-hidden");
+
+    await this.savePanelContent(panel);
+    this.renderPanel(panel);
+    this.refreshStatusBar();
+
+    // Update manifest modified time
+    this.manifest.modified = new Date().toISOString();
+    this.requestSave();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Rendering
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private renderPanel(panel: SectionPanel): void {
+    panel.renderEl.empty();
+
+    if (!panel.content.trim()) {
+      const placeholders: Record<SectionKey, string> = {
+        cues: "Ключевые вопросы, идеи, термины...\nНажмите, чтобы редактировать",
+        notes: "Основные записи лекции / материала...\nНажмите, чтобы редактировать",
+        summary: "Краткое резюме — основные выводы...\nНажмите, чтобы редактировать",
+      };
+      panel.renderEl.createDiv({
+        cls: "cornell-placeholder",
+        text: placeholders[panel.key],
+      });
+      return;
+    }
+
+    const sourcePath = panel.file?.path ?? this.file?.path ?? "";
+    MarkdownRenderer.render(
+      this.app,
+      panel.content,
+      panel.renderEl,
+      sourcePath,
+      this,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Manifest sync
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private syncManifestToUI(): void {
+    if (this.titleEditor) this.titleEditor.value = this.manifest.title;
+    if (this.tagsEditor) this.tagsEditor.value = this.manifest.tags.join(", ");
+    this.refreshStatusBar();
+  }
+
+  private onManifestChanged(): void {
+    if (this.isLoading) return;
+    this.manifest.modified = new Date().toISOString();
+    this.requestSave();
+    this.refreshStatusBar();
+  }
+
   private refreshStatusBar(): void {
     if (!this.statusBarEl) return;
     this.statusBarEl.empty();
 
-    const totalWords = countWords(
-      [this.data.notes, this.data.cues, this.data.summary].join(" ")
-    );
+    let totalText = "";
+    for (const panel of this.panels.values()) {
+      totalText += panel.content + " ";
+    }
 
     this.statusBarEl.createSpan({
-      text: `Слов: ${totalWords}`,
+      text: `Слов: ${countWords(totalText)}`,
       cls: "cornell-status-item",
     });
     this.statusBarEl.createSpan({
-      text: `Создано: ${formatDate(this.data.created)}`,
+      text: `Создано: ${formatDate(this.manifest.created)}`,
       cls: "cornell-status-item",
     });
     this.statusBarEl.createSpan({
-      text: `Изменено: ${formatDate(this.data.modified)}`,
+      text: `Изменено: ${formatDate(this.manifest.modified)}`,
       cls: "cornell-status-item",
     });
   }
@@ -273,9 +375,6 @@ export class CornellNotesView extends TextFileView {
   // Interactions
   // ═══════════════════════════════════════════════════════════════════════
 
-  /**
-   * Draggable divider between Cues and Notes panels
-   */
   private setupDividerDrag(
     divider: HTMLElement,
     mainArea: HTMLElement,
@@ -310,23 +409,15 @@ export class CornellNotesView extends TextFileView {
     divider.addEventListener("mousedown", onMouseDown);
   }
 
-  /**
-   * Tab / Shift+Tab cycles focus between three editor panels
-   */
-  private setupTabNavigation(): void {
-    const editors = [this.cuesEditor, this.notesEditor, this.summaryEditor];
+  // ═══════════════════════════════════════════════════════════════════════
+  // Public API (for export modal)
+  // ═══════════════════════════════════════════════════════════════════════
 
-    editors.forEach((editor, idx) => {
-      if (!editor) return;
+  getManifest(): CornellManifest {
+    return this.manifest;
+  }
 
-      editor.addEventListener("keydown", (e: KeyboardEvent) => {
-        if (e.key !== "Tab" || e.ctrlKey || e.altKey) return;
-        e.preventDefault();
-
-        const step = e.shiftKey ? -1 : 1;
-        const next = (idx + step + editors.length) % editors.length;
-        editors[next]?.focus();
-      });
-    });
+  getSectionContent(key: SectionKey): string {
+    return this.panels.get(key)?.content ?? "";
   }
 }

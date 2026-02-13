@@ -1,4 +1,4 @@
-﻿// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 // Cornell Notes Plugin — Entry Point
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -15,17 +15,18 @@ import {
   CORNELL_VIEW_TYPE,
   CORNELL_EXTENSION,
   CORNELL_ICON,
-  createEmptyData,
-  serializeData,
-  parseData,
+  SECTION_KEYS,
+  createManifest,
+  serializeManifest,
+  sectionFilePath,
+  generateFrontmatter,
 } from "./src/types";
 import { CornellNotesView } from "./src/view";
-import { CreateCornellNoteModal, ExportCornellNoteModal } from "./src/modals";
+import { CreateCornellNoteModal, AggregateCornellModal } from "./src/modals";
 import {
   CornellSettings,
   DEFAULT_SETTINGS,
   CornellSettingsTab,
-  generateMdContent,
 } from "./src/settings";
 
 export default class CornellNotesPlugin extends Plugin {
@@ -87,8 +88,7 @@ export default class CornellNotesPlugin extends Plugin {
           new Notice("Откройте конспект Cornell Notes для экспорта");
           return;
         }
-        const data = parseData(view.getViewData());
-        new ExportCornellNoteModal(this.app, data).open();
+        new AggregateCornellModal(this.app, view).open();
       },
     });
   }
@@ -139,45 +139,31 @@ export default class CornellNotesPlugin extends Plugin {
   }
 
   private async createCornellNote(name: string, folder: string): Promise<void> {
-    if (folder && folder !== "/") {
-      const exists = this.app.vault.getAbstractFileByPath(folder);
-      if (!exists) {
-        await this.app.vault.createFolder(folder);
-      }
-    }
+    const noteFolder = folder && folder !== "/" ? `${folder}/${name}` : name;
 
-    const filePath =
-      folder && folder !== "/"
-        ? `${folder}/${name}.${CORNELL_EXTENSION}`
-        : `${name}.${CORNELL_EXTENSION}`;
-
-    if (this.app.vault.getAbstractFileByPath(filePath)) {
-      new Notice(`Файл "${filePath}" уже существует`);
+    if (this.app.vault.getAbstractFileByPath(noteFolder)) {
+      new Notice(`Папка "${noteFolder}" уже существует`);
       return;
     }
 
-    const data = createEmptyData(name);
-    await this.app.vault.create(filePath, serializeData(data));
+    await this.app.vault.createFolder(noteFolder);
 
-    const file = this.app.vault.getAbstractFileByPath(filePath);
-    if (file instanceof TFile) {
-      await this.app.workspace.getLeaf(false).openFile(file);
+    // Create section .md files
+    for (const key of SECTION_KEYS) {
+      const path = sectionFilePath(noteFolder, name, key);
+      const content = generateFrontmatter(key, name);
+      await this.app.vault.create(path, content);
     }
 
-    // Create companion .md if enabled
-    if (this.settings.createMdCompanion) {
-      const mdPath =
-        folder && folder !== "/"
-          ? `${folder}/${name}.md`
-          : `${name}.md`;
+    // Create .cornell manifest
+    const manifestPath = `${noteFolder}/${name}.${CORNELL_EXTENSION}`;
+    const manifest = createManifest(name);
+    await this.app.vault.create(manifestPath, serializeManifest(manifest));
 
-      if (!this.app.vault.getAbstractFileByPath(mdPath)) {
-        const mdContent = generateMdContent(
-          name,
-          this.settings.mdSectionOrder
-        );
-        await this.app.vault.create(mdPath, mdContent);
-      }
+    // Open the cornell view
+    const file = this.app.vault.getAbstractFileByPath(manifestPath);
+    if (file instanceof TFile) {
+      await this.app.workspace.getLeaf(false).openFile(file);
     }
 
     new Notice(`Конспект "${name}" создан`);
