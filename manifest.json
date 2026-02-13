@@ -1,0 +1,9 @@
+﻿{
+  "id": "cornell-notes",
+  "name": "Cornell Notes",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "A custom note type with three editable panels: Notes, Cues/Questions, and Summary (Cornell method)",
+  "author": "Felmar's Lab",
+  "isDesktopOnly": false
+}
