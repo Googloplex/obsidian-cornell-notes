@@ -47,7 +47,7 @@ Notes/
 ### Сборка из исходников
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/Googloplex/obsidian-cornell-notes.git
 cd obsidian-cornell-notes
 npm install
 npm run build
