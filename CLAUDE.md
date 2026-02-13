@@ -11,27 +11,33 @@ After build, copy `main.js` + `manifest.json` + `styles.css` into an Obsidian va
 
 ## Architecture
 
-Obsidian plugin implementing the Cornell Note-Taking Method. Custom `.cornell` file format (JSON) with a three-panel editor UI.
+Obsidian plugin implementing the Cornell Note-Taking Method. Each note is a **folder** containing:
+- `.cornell` manifest (JSON: title, tags, timestamps) — opens the custom 3-panel view
+- `name_cues.md`, `name_notes.md`, `name_summary.md` — real .md files with YAML frontmatter
 
-**Entry point**: `main.ts` — `CornellNotesPlugin` extends `Plugin`. Registers the custom view, commands, ribbon icon, folder context menu, and settings tab.
+**Entry point**: `main.ts` — `CornellNotesPlugin` extends `Plugin`. Creates folder structure (subfolder + 3 .md + .cornell manifest), registers view, commands, ribbon icon, context menu, settings tab.
 
 **Modules** (`src/`):
 
 | File | Role |
 |------|------|
-| `types.ts` | `CornellData` interface, constants (`CORNELL_VIEW_TYPE`, `CORNELL_EXTENSION`, `CORNELL_ICON`), JSON parse/serialize, formatting helpers |
-| `view.ts` | `CornellNotesView` extends `TextFileView` — three-panel editor (cues/notes/summary), draggable divider, Tab navigation, status bar |
-| `modals.ts` | `CreateCornellNoteModal` (file creation dialog), `ExportCornellNoteModal` (Markdown export with preview) |
-| `settings.ts` | `CornellSettings` interface, `CornellSettingsTab` (PluginSettingTab), `generateMdContent()` for companion .md files |
+| `types.ts` | `CornellManifest` interface, `SECTIONS` map (key→suffix+label), `SectionKey` type, frontmatter generation/stripping, path helpers, formatting utils |
+| `view.ts` | `CornellNotesView` extends `TextFileView` — reads .cornell manifest, loads 3 .md files, renders markdown via `MarkdownRenderer.render()`, click-to-edit with textarea, saves back to .md files preserving frontmatter |
+| `modals.ts` | `CreateCornellNoteModal` (name+folder dialog), `AggregateCornellModal` (reads 3 sections, combines into single Markdown with preview/copy/export) |
+| `settings.ts` | `CornellSettings` (defaultFolder), `CornellSettingsTab` |
 
-**Data flow**: User edits → `this.data` updated → `requestSave()` triggers Obsidian's auto-save → `getViewData()` serializes JSON. External file changes arrive via `setViewData()` → `parseData()` → `syncDataToEditors()` updates DOM. The `isLoading` flag prevents feedback loops.
+**Data flow**:
+- `.cornell` manifest: loaded via `setViewData()` → `parseManifest()`, saved via `getViewData()` → `serializeManifest()`, auto-saved with `requestSave()`
+- Section .md files: loaded via `vault.read()` → `stripFrontmatter()`, saved via `vault.modify()` with frontmatter preserved. External changes detected via `vault.on("modify")` event
+- Edit mode: click panel → show textarea with raw markdown, blur → save to .md file + re-render with `MarkdownRenderer`
 
-**Styling**: `styles.css` at root — pure CSS with Obsidian CSS variables, responsive layout (<600px stacks vertically), print styles. All classes prefixed with `cornell-`.
+**Styling**: `styles.css` — pure CSS with Obsidian variables. Key toggle: `.cornell-render` (rendered markdown, visible by default) vs `.cornell-editor` (textarea, hidden). Classes: `.cornell-render-hidden` / `.cornell-editor-hidden` control visibility.
 
 ## Conventions
 
 - UI strings in Russian
 - Constants: `UPPER_SNAKE_CASE`; classes: `PascalCase`; functions: `camelCase`; CSS: `cornell-` prefixed kebab-case
 - DOM built with Obsidian's `createEl()`/`createDiv()` helpers, no UI frameworks
-- Uses `requestSave()` (Obsidian's debounced save), not direct `vault.modify()`
+- Manifest uses `requestSave()` (Obsidian's debounced save); section .md files use direct `vault.modify()`
 - Section dividers in code use box-drawing characters (═, ─)
+- Section file naming: `{noteName}_{sectionKey}.md` (e.g. `Лекция_cues.md`)
