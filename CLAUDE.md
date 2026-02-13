@@ -30,7 +30,7 @@ Obsidian plugin implementing the Cornell Note-Taking Method. Each note is a **fo
 
 **Data flow**:
 - `.cornell` manifest: loaded via `setViewData()` → `parseManifest()`, saved via `getViewData()` → `serializeManifest()`, auto-saved with `requestSave()`
-- Section .md files: loaded via `vault.read()` → `stripFrontmatter()`, fed into embedded CM6 editor. On change: debounced `vault.modify()` (1s) with frontmatter preserved. On blur: immediate flush. External changes detected via `vault.on("modify")` event with `panel.saving` guard to prevent save-reload loops
+- Section .md files: loaded via `vault.read()` → `stripFrontmatter()`, fed into embedded CM6 editor. On change: debounced `vault.modify()` (1s) with frontmatter preserved. On blur: immediate flush. External changes detected via `vault.on("modify")` event with `panel.saving` guard to prevent save-reload loops. Tags from manifest synced into YAML `tags` property of all sections via `updateFrontmatter()` (strips `#`, splits by comma/space)
 - Editing: always-on CM6 Live Preview — no mode switching. `EmbeddableMarkdownEditor` provides full Obsidian editor experience (syntax highlighting, wikilinks, embeds, LaTeX)
 
 **Styling**: `styles.css` — pure CSS with Obsidian variables. Embedded CM6 editors styled via `.cornell-panel-content .cm-editor` / `.cm-scroller` / `.cm-placeholder`. Vertical divider (`.cornell-divider`) between cues/notes, horizontal divider (`.cornell-divider-horizontal`) above summary for drag resize.

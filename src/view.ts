@@ -17,6 +17,7 @@ import {
   serializeManifest,
   sectionFilePath,
   stripFrontmatter,
+  updateFrontmatter,
   formatDate,
   countWords,
 } from "./types";
@@ -368,9 +369,10 @@ export class CornellNotesView extends TextFileView {
     panel.saving = true;
 
     try {
-      // Preserve frontmatter, replace body
+      // Preserve frontmatter, replace body, sync tags
       const fmMatch = panel.fullContent.match(/^(---\n[\s\S]*?\n---\n?)/);
-      const frontmatter = fmMatch ? fmMatch[1] : "";
+      let frontmatter = fmMatch ? fmMatch[1] : "";
+      frontmatter = updateFrontmatter(frontmatter, panel.key, this.manifest.tags);
       const newFull = frontmatter + panel.content;
 
       panel.fullContent = newFull;
@@ -399,6 +401,15 @@ export class CornellNotesView extends TextFileView {
     this.manifest.modified = new Date().toISOString();
     this.requestSave();
     this.refreshStatusBar();
+    this.syncTagsToAllPanels();
+  }
+
+  private syncTagsToAllPanels(): void {
+    for (const panel of this.panels.values()) {
+      if (panel.file) {
+        this.savePanelContent(panel);
+      }
+    }
   }
 
   private refreshStatusBar(): void {
