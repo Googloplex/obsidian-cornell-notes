@@ -24,9 +24,9 @@ Obsidian plugin implementing the Cornell Note-Taking Method. Each note is a **fo
 |------|------|
 | `types.ts` | `CornellManifest` interface, `SECTIONS` map (key→suffix+label), `SectionKey` type, frontmatter generation/stripping, path helpers, formatting utils |
 | `embedded-editor.ts` | `EmbeddableMarkdownEditor` — lazy factory wrapping Obsidian's internal `ScrollableMarkdownEditor` prototype (CM6 Live Preview). Adapted from [Fevol's gist](https://gist.github.com/Fevol/caa478ce303e69eabede7b12b2323838) / obsidian-kanban |
-| `view.ts` | `CornellNotesView` extends `TextFileView` — reads .cornell manifest, loads 3 .md files into embedded CM6 editors with Live Preview (wikilinks, embeds, LaTeX rendered inline). Debounced save, external change detection, Tab navigation between panels, Shift+Tab inserts tab, draggable horizontal divider for summary resize |
+| `view.ts` | `CornellNotesView` extends `TextFileView` — reads .cornell manifest, loads 3 .md files into embedded CM6 editors with Live Preview (wikilinks, embeds, LaTeX rendered inline). Debounced save, external change detection, Tab navigation between panels, Shift+Tab inserts tab, draggable dividers, configurable layout (cues left/right, summary top/bottom via settings) |
 | `modals.ts` | `CreateCornellNoteModal` (name+folder dialog), `AggregateCornellModal` (reads 3 sections, combines into single Markdown with preview/copy/export) |
-| `settings.ts` | `CornellSettings` (defaultFolder, default `"Cornell Notes"`), `CornellSettingsTab`. Changing folder triggers `ensureRootFolder()` |
+| `settings.ts` | `CornellSettings` (defaultFolder, cuesPosition, summaryPosition), `CornellSettingsTab`. Changing folder triggers `ensureRootFolder()`. Layout settings require reopening the note |
 
 **Data flow**:
 - `.cornell` manifest: loaded via `setViewData()` → `parseManifest()`, saved via `getViewData()` → `serializeManifest()`, auto-saved with `requestSave()`

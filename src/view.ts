@@ -2,7 +2,7 @@
 // Cornell Notes — View (Three-panel editor with .md file backing)
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { TextFileView, TFile, debounce } from "obsidian";
+import { TextFileView, WorkspaceLeaf, TFile, debounce } from "obsidian";
 import { Prec } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import {
@@ -24,6 +24,7 @@ import {
   createEmbeddableEditor,
   EmbeddableMarkdownEditor,
 } from "./embedded-editor";
+import type { CornellSettings } from "./settings";
 
 // ─── Section panel state ─────────────────────────────────────────────────
 
@@ -53,6 +54,12 @@ export class CornellNotesView extends TextFileView {
   private tagsEditor: HTMLInputElement | null = null;
   private statusBarEl: HTMLElement | null = null;
   private isLoading = false;
+  private getSettings: () => CornellSettings;
+
+  constructor(leaf: WorkspaceLeaf, getSettings: () => CornellSettings) {
+    super(leaf);
+    this.getSettings = getSettings;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════
   // TextFileView interface
@@ -104,10 +111,21 @@ export class CornellNotesView extends TextFileView {
     contentEl.empty();
     contentEl.addClass("cornell-notes-container");
 
+    const settings = this.getSettings();
+    const summaryTop = settings.summaryPosition === "top";
+
     this.buildTitleBar(contentEl);
-    this.buildMainArea(contentEl);
-    this.buildSummaryDivider(contentEl);
-    this.buildSummaryPanel(contentEl);
+
+    if (summaryTop) {
+      this.buildSummaryPanel(contentEl);
+      this.buildSummaryDivider(contentEl, summaryTop);
+      this.buildMainArea(contentEl);
+    } else {
+      this.buildMainArea(contentEl);
+      this.buildSummaryDivider(contentEl, summaryTop);
+      this.buildSummaryPanel(contentEl);
+    }
+
     this.buildStatusBar(contentEl);
 
     // Watch for external file changes
@@ -164,20 +182,25 @@ export class CornellNotesView extends TextFileView {
   }
 
   private buildMainArea(parent: HTMLElement): void {
+    const cuesRight = this.getSettings().cuesPosition === "right";
     const main = parent.createDiv({ cls: "cornell-main-area" });
 
-    this.buildSectionPanel(main, "cues", "cornell-panel cornell-cues-panel");
+    const firstKey: SectionKey = cuesRight ? "notes" : "cues";
+    const secondKey: SectionKey = cuesRight ? "cues" : "notes";
+    const firstCls = cuesRight ? "cornell-panel cornell-notes-panel" : "cornell-panel cornell-cues-panel";
+    const secondCls = cuesRight ? "cornell-panel cornell-cues-panel" : "cornell-panel cornell-notes-panel";
 
+    this.buildSectionPanel(main, firstKey, firstCls);
     const divider = main.createDiv({ cls: "cornell-divider" });
-    const cuesPanel = main.querySelector(".cornell-cues-panel") as HTMLElement;
-    this.setupDividerDrag(divider, main, cuesPanel);
+    this.buildSectionPanel(main, secondKey, secondCls);
 
-    this.buildSectionPanel(main, "notes", "cornell-panel cornell-notes-panel");
+    const cuesPanel = main.querySelector(".cornell-cues-panel") as HTMLElement;
+    this.setupDividerDrag(divider, main, cuesPanel, cuesRight);
   }
 
-  private buildSummaryDivider(parent: HTMLElement): void {
+  private buildSummaryDivider(parent: HTMLElement, summaryTop: boolean): void {
     const divider = parent.createDiv({ cls: "cornell-divider-horizontal" });
-    this.setupSummaryDividerDrag(divider, parent);
+    this.setupSummaryDividerDrag(divider, parent, summaryTop);
   }
 
   private buildSummaryPanel(parent: HTMLElement): void {
@@ -408,7 +431,8 @@ export class CornellNotesView extends TextFileView {
   private setupDividerDrag(
     divider: HTMLElement,
     mainArea: HTMLElement,
-    cuesPanel: HTMLElement
+    cuesPanel: HTMLElement,
+    reverse: boolean
   ): void {
     let startX = 0;
     let startWidth = 0;
@@ -423,7 +447,7 @@ export class CornellNotesView extends TextFileView {
     };
 
     const onMouseMove = (e: MouseEvent) => {
-      const delta = e.clientX - startX;
+      const delta = reverse ? startX - e.clientX : e.clientX - startX;
       const maxW = mainArea.offsetWidth - 200;
       const newWidth = Math.max(150, Math.min(startWidth + delta, maxW));
       cuesPanel.style.width = `${newWidth}px`;
@@ -441,7 +465,8 @@ export class CornellNotesView extends TextFileView {
 
   private setupSummaryDividerDrag(
     divider: HTMLElement,
-    container: HTMLElement
+    container: HTMLElement,
+    summaryTop: boolean
   ): void {
     let startY = 0;
     let startHeight = 0;
@@ -460,7 +485,7 @@ export class CornellNotesView extends TextFileView {
 
     const onMouseMove = (e: MouseEvent) => {
       if (!summaryPanel) return;
-      const delta = startY - e.clientY; // dragging up = larger summary
+      const delta = summaryTop ? e.clientY - startY : startY - e.clientY;
       const newHeight = Math.max(80, Math.min(startHeight + delta, container.offsetHeight - 200));
       summaryPanel.style.height = `${newHeight}px`;
       summaryPanel.style.flexShrink = "0";

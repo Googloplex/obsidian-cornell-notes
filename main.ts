@@ -69,7 +69,7 @@ export default class CornellNotesPlugin extends Plugin {
   private registerCornellView(): void {
     this.registerView(
       CORNELL_VIEW_TYPE,
-      (leaf: WorkspaceLeaf) => new CornellNotesView(leaf)
+      (leaf: WorkspaceLeaf) => new CornellNotesView(leaf, () => this.settings)
     );
     this.registerExtensions([CORNELL_EXTENSION], CORNELL_VIEW_TYPE);
   }
