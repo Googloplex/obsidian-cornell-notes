@@ -144,79 +144,54 @@
   color: var(--color-green, #00b450);
 }
 
-/* ── Panel Content (render + editor container) ─────────────────────────── */
+/* ── Panel Content (embedded CM6 editor container) ─────────────────────── */
 
 .cornell-panel-content {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ── Rendered Markdown ─────────────────────────────────────────────────── */
+/* ── Embedded CM6 Editor ───────────────────────────────────────────────── */
 
-.cornell-render {
-  padding: 16px;
-  cursor: text;
-  min-height: 40px;
-  font-size: var(--font-text-size, 15px);
-  line-height: 1.65;
-}
-
-.cornell-render:hover {
-  background: rgba(var(--color-accent-rgb, 0, 122, 204), 0.03);
-}
-
-.cornell-render-hidden {
-  display: none;
-}
-
-/* ── Placeholder ───────────────────────────────────────────────────────── */
-
-.cornell-placeholder {
-  color: var(--text-faint);
-  opacity: 0.6;
-  font-style: italic;
-  white-space: pre-line;
-}
-
-/* ── Editor (textarea, hidden by default) ──────────────────────────────── */
-
-.cornell-editor {
-  flex: 1;
-  width: 100%;
+.cornell-panel-content .cm-editor {
   height: 100%;
-  padding: 16px;
   font-family: var(--font-text);
   font-size: var(--font-text-size, 15px);
   line-height: 1.65;
-  color: var(--text-normal);
-  background: rgba(var(--color-accent-rgb, 0, 122, 204), 0.03);
-  border: none;
-  outline: none;
-  resize: none;
-  overflow-y: auto;
-  box-sizing: border-box;
+  background: transparent;
 }
 
-.cornell-editor-hidden {
-  display: none;
+.cornell-panel-content .cm-editor.cm-focused {
+  outline: none;
+  background: rgba(var(--color-accent-rgb, 0, 122, 204), 0.03);
+}
+
+.cornell-panel-content .cm-scroller {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.cornell-panel-content .cm-placeholder {
+  color: var(--text-faint);
+  opacity: 0.6;
+  font-style: italic;
 }
 
 /* Scrollbar styling */
-.cornell-panel-content::-webkit-scrollbar,
-.cornell-editor::-webkit-scrollbar {
+.cornell-panel-content .cm-scroller::-webkit-scrollbar {
   width: 6px;
 }
 
-.cornell-panel-content::-webkit-scrollbar-thumb,
-.cornell-editor::-webkit-scrollbar-thumb {
+.cornell-panel-content .cm-scroller::-webkit-scrollbar-thumb {
   background: var(--background-modifier-border);
   border-radius: 3px;
 }
 
-.cornell-panel-content::-webkit-scrollbar-thumb:hover,
-.cornell-editor::-webkit-scrollbar-thumb:hover {
+.cornell-panel-content .cm-scroller::-webkit-scrollbar-thumb:hover {
   background: var(--text-faint);
 }
 
@@ -262,6 +237,15 @@
   border-top: 2px solid var(--background-modifier-border);
   background: var(--background-secondary);
   flex-shrink: 0;
+}
+
+.cornell-summary-panel .cornell-panel-content {
+  min-height: 120px;
+  max-height: 300px;
+}
+
+.cornell-summary-panel .cornell-panel-content .cm-editor {
+  min-height: 120px;
 }
 
 /* ── Status Bar ─────────────────────────────────────────────────────────── */
@@ -350,7 +334,7 @@
     border-color: #ccc;
   }
 
-  .cornell-render {
+  .cornell-panel-content .cm-editor {
     color: black;
   }
 

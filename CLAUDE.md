@@ -4,8 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
-- `npm run build` — bundle TypeScript into `main.js` via esbuild (CJS, ES2018, obsidian externalized)
+- `npm run build` — bundle TypeScript into `main.js` via esbuild (CJS, ES2018, obsidian + @codemirror/* externalized)
 - `npm run dev` — same with `--watch` for live reload during development
+- `npm run deploy` — build, copy to vault, restart Obsidian (Windows-specific paths in `scripts/deploy.js`)
 
 After build, copy `main.js` + `manifest.json` + `styles.css` into an Obsidian vault at `.obsidian/plugins/cornell-notes/` and restart Obsidian to test.
 
@@ -22,16 +23,19 @@ Obsidian plugin implementing the Cornell Note-Taking Method. Each note is a **fo
 | File | Role |
 |------|------|
 | `types.ts` | `CornellManifest` interface, `SECTIONS` map (key→suffix+label), `SectionKey` type, frontmatter generation/stripping, path helpers, formatting utils |
-| `view.ts` | `CornellNotesView` extends `TextFileView` — reads .cornell manifest, loads 3 .md files, renders markdown via `MarkdownRenderer.render()`, click-to-edit with textarea, saves back to .md files preserving frontmatter |
+| `embedded-editor.ts` | `EmbeddableMarkdownEditor` — lazy factory wrapping Obsidian's internal `ScrollableMarkdownEditor` prototype (CM6 Live Preview). Adapted from [Fevol's gist](https://gist.github.com/Fevol/caa478ce303e69eabede7b12b2323838) / obsidian-kanban |
+| `view.ts` | `CornellNotesView` extends `TextFileView` — reads .cornell manifest, loads 3 .md files into embedded CM6 editors with Live Preview (wikilinks, embeds, LaTeX rendered inline). Debounced save, external change detection, Tab navigation |
 | `modals.ts` | `CreateCornellNoteModal` (name+folder dialog), `AggregateCornellModal` (reads 3 sections, combines into single Markdown with preview/copy/export) |
 | `settings.ts` | `CornellSettings` (defaultFolder), `CornellSettingsTab` |
 
 **Data flow**:
 - `.cornell` manifest: loaded via `setViewData()` → `parseManifest()`, saved via `getViewData()` → `serializeManifest()`, auto-saved with `requestSave()`
-- Section .md files: loaded via `vault.read()` → `stripFrontmatter()`, saved via `vault.modify()` with frontmatter preserved. External changes detected via `vault.on("modify")` event
-- Edit mode: click panel → show textarea with raw markdown, blur → save to .md file + re-render with `MarkdownRenderer`
+- Section .md files: loaded via `vault.read()` → `stripFrontmatter()`, fed into embedded CM6 editor. On change: debounced `vault.modify()` (1s) with frontmatter preserved. On blur: immediate flush. External changes detected via `vault.on("modify")` event with `panel.saving` guard to prevent save-reload loops
+- Editing: always-on CM6 Live Preview — no mode switching. `EmbeddableMarkdownEditor` provides full Obsidian editor experience (syntax highlighting, wikilinks, embeds, LaTeX)
 
-**Styling**: `styles.css` — pure CSS with Obsidian variables. Key toggle: `.cornell-render` (rendered markdown, visible by default) vs `.cornell-editor` (textarea, hidden). Classes: `.cornell-render-hidden` / `.cornell-editor-hidden` control visibility.
+**Styling**: `styles.css` — pure CSS with Obsidian variables. Embedded CM6 editors styled via `.cornell-panel-content .cm-editor` / `.cm-scroller` / `.cm-placeholder`.
+
+**Dependencies**: `monkey-around` (bundled, runtime) for safe `workspace.setActiveLeaf` patching. `obsidian-typings` (devDep) for internal API types. `@codemirror/state` and `@codemirror/view` marked external (provided by Obsidian).
 
 ## Conventions
 

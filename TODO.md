@@ -8,9 +8,9 @@
 
 ## Следующая итерация: встроенный Markdown-редактор
 
-- [ ] Заменить textarea на встроенный CodeMirror 6 (как в Canvas file-нодах) — полноценное WYSIWYG-редактирование без переключения режимов
-- [ ] Исследовать внутренние API Obsidian для embedded MarkdownView
-- [ ] Live preview: wikilinks, embeds, LaTeX прямо при вводе
+- [x] Заменить textarea на встроенный CodeMirror 6 (как в Canvas file-нодах) — полноценное WYSIWYG-редактирование без переключения режимов
+- [x] Исследовать внутренние API Obsidian для embedded MarkdownView
+- [x] Live preview: wikilinks, embeds, LaTeX прямо при вводе
 
 ## Улучшения
 

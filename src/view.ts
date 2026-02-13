@@ -2,7 +2,9 @@
 // Cornell Notes — View (Three-panel editor with .md file backing)
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { TextFileView, WorkspaceLeaf, TFile, MarkdownRenderer } from "obsidian";
+import { TextFileView, TFile, debounce } from "obsidian";
+import { Prec } from "@codemirror/state";
+import { keymap } from "@codemirror/view";
 import {
   CORNELL_VIEW_TYPE,
   CORNELL_ICON,
@@ -18,19 +20,31 @@ import {
   formatDate,
   countWords,
 } from "./types";
+import {
+  createEmbeddableEditor,
+  EmbeddableMarkdownEditor,
+} from "./embedded-editor";
 
 // ─── Section panel state ─────────────────────────────────────────────────
 
 interface SectionPanel {
   key: SectionKey;
   container: HTMLElement;
-  renderEl: HTMLElement;
-  editorEl: HTMLTextAreaElement;
-  editing: boolean;
+  editorContainer: HTMLElement;
+  editor: EmbeddableMarkdownEditor | null;
   content: string;      // raw markdown (without frontmatter)
   fullContent: string;  // full file content (with frontmatter)
   file: TFile | null;
+  saving: boolean;      // guard against save-reload loop
 }
+
+// ─── Placeholder texts ──────────────────────────────────────────────────
+
+const PLACEHOLDERS: Record<SectionKey, string> = {
+  cues: "Ключевые вопросы, идеи, термины...",
+  notes: "Основные записи лекции / материала...",
+  summary: "Краткое резюме — основные выводы...",
+};
 
 export class CornellNotesView extends TextFileView {
   private manifest: CornellManifest = createManifest("");
@@ -75,7 +89,9 @@ export class CornellNotesView extends TextFileView {
       panel.content = "";
       panel.fullContent = "";
       panel.file = null;
-      this.renderPanel(panel);
+      if (panel.editor) {
+        panel.editor.updateContent("");
+      }
     }
   }
 
@@ -98,7 +114,7 @@ export class CornellNotesView extends TextFileView {
       this.app.vault.on("modify", (file) => {
         if (!(file instanceof TFile)) return;
         for (const panel of this.panels.values()) {
-          if (panel.file && panel.file.path === file.path && !panel.editing) {
+          if (panel.file && panel.file.path === file.path && !panel.saving) {
             this.loadPanelContent(panel);
           }
         }
@@ -107,10 +123,12 @@ export class CornellNotesView extends TextFileView {
   }
 
   async onClose(): Promise<void> {
-    // Save any panel that's still in editing mode
+    // panel.content is kept up-to-date by onChange callback on every keystroke.
+    // Do NOT read from panel.editor.value here — editors may already be
+    // destroyed by Component lifecycle, returning empty string and wiping data.
     for (const panel of this.panels.values()) {
-      if (panel.editing) {
-        await this.commitPanelEdit(panel);
+      if (panel.file && panel.content) {
+        await this.savePanelContent(panel);
       }
     }
   }
@@ -170,47 +188,19 @@ export class CornellNotesView extends TextFileView {
     header.createSpan({ cls: "cornell-panel-icon", text: iconCls });
     header.createSpan({ text: section.label });
 
-    // Content area — holds both render and editor
-    const contentArea = container.createDiv({ cls: "cornell-panel-content" });
-
-    // Rendered markdown (visible by default)
-    const renderEl = contentArea.createDiv({ cls: "cornell-render" });
-
-    // Textarea editor (hidden by default)
-    const editorEl = contentArea.createEl("textarea", {
-      cls: "cornell-editor cornell-editor-hidden",
-      attr: { spellcheck: "true" },
-    });
+    // Content area — holds the embedded CM6 editor
+    const editorContainer = container.createDiv({ cls: "cornell-panel-content" });
 
     const panel: SectionPanel = {
       key,
       container,
-      renderEl,
-      editorEl,
-      editing: false,
+      editorContainer,
+      editor: null,
       content: "",
       fullContent: "",
       file: null,
+      saving: false,
     };
-
-    // Click rendered area → enter editing
-    renderEl.addEventListener("click", () => this.enterEditMode(panel));
-
-    // Blur editor → save and render
-    editorEl.addEventListener("blur", () => this.commitPanelEdit(panel));
-
-    // Tab navigation between panels
-    editorEl.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Tab" && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        const keys = SECTION_KEYS;
-        const idx = keys.indexOf(key);
-        const step = e.shiftKey ? -1 : 1;
-        const nextKey = keys[(idx + step + keys.length) % keys.length];
-        const nextPanel = this.panels.get(nextKey);
-        if (nextPanel) this.enterEditMode(nextPanel);
-      }
-    });
 
     this.panels.set(key, panel);
   }
@@ -218,6 +208,74 @@ export class CornellNotesView extends TextFileView {
   private buildStatusBar(parent: HTMLElement): void {
     this.statusBarEl = parent.createDiv({ cls: "cornell-status-bar" });
     this.refreshStatusBar();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Embedded editor initialization
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private initPanelEditor(panel: SectionPanel): void {
+    // Destroy existing editor if any
+    if (panel.editor) {
+      this.removeChild(panel.editor as any);
+      panel.editor = null;
+    }
+
+    const debouncedSave = debounce(() => {
+      this.savePanelContent(panel);
+    }, 1000, true);
+
+    // Tab = navigate panels, Ctrl+Tab is left for Obsidian tab switching
+    const tabExtension = Prec.highest(
+      keymap.of([
+        {
+          key: "Tab",
+          run: () => {
+            this.focusNextPanel(panel.key, false);
+            return true;
+          },
+          shift: () => {
+            this.focusNextPanel(panel.key, true);
+            return true;
+          },
+        },
+      ]),
+    );
+
+    const editor = createEmbeddableEditor(this.app, panel.editorContainer, {
+      value: panel.content,
+      placeholder: PLACEHOLDERS[panel.key],
+      cls: "cornell-embedded-editor",
+      extraExtensions: [tabExtension],
+      onChange: (_update, _editor) => {
+        panel.content = _editor.value;
+        debouncedSave();
+        this.refreshStatusBar();
+      },
+      onEscape: (_editor) => {
+        _editor.editor.cm.contentDOM.blur();
+      },
+      onEnter: () => false, // normal Enter = newline
+      onBlur: () => {
+        // Flush debounced save immediately
+        debouncedSave.cancel?.();
+        this.savePanelContent(panel);
+      },
+    });
+
+    panel.editor = editor;
+    this.addChild(editor as any);
+  }
+
+  private focusNextPanel(currentKey: SectionKey, reverse: boolean): void {
+    const keys = SECTION_KEYS;
+    const idx = keys.indexOf(currentKey);
+    const step = reverse ? -1 : 1;
+    const nextKey = keys[(idx + step + keys.length) % keys.length];
+    const nextPanel = this.panels.get(nextKey);
+    if (nextPanel?.editor) {
+      nextPanel.editor.editor.cm.contentDOM.focus();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -244,7 +302,11 @@ export class CornellNotesView extends TextFileView {
         panel.file = null;
         panel.content = "";
         panel.fullContent = "";
-        this.renderPanel(panel);
+        if (panel.editor) {
+          panel.editor.updateContent("");
+        } else {
+          this.initPanelEditor(panel);
+        }
       }
     }
   }
@@ -254,81 +316,40 @@ export class CornellNotesView extends TextFileView {
     const raw = await this.app.vault.read(panel.file);
     panel.fullContent = raw;
     panel.content = stripFrontmatter(raw);
-    this.renderPanel(panel);
+
+    if (panel.editor) {
+      // Update existing editor (external file changes)
+      // Only update if content differs to avoid cursor jumps
+      if (panel.editor.value !== panel.content) {
+        panel.editor.updateContent(panel.content);
+      }
+    } else {
+      // First load: create the editor
+      this.initPanelEditor(panel);
+    }
+
     this.refreshStatusBar();
   }
 
   private async savePanelContent(panel: SectionPanel): Promise<void> {
-    if (!panel.file) return;
+    if (!panel.file || panel.saving) return;
+    panel.saving = true;
 
-    // Preserve frontmatter, replace body
-    const fmMatch = panel.fullContent.match(/^(---\n[\s\S]*?\n---\n?)/);
-    const frontmatter = fmMatch ? fmMatch[1] : "";
-    const newFull = frontmatter + panel.content;
+    try {
+      // Preserve frontmatter, replace body
+      const fmMatch = panel.fullContent.match(/^(---\n[\s\S]*?\n---\n?)/);
+      const frontmatter = fmMatch ? fmMatch[1] : "";
+      const newFull = frontmatter + panel.content;
 
-    panel.fullContent = newFull;
-    await this.app.vault.modify(panel.file, newFull);
-  }
+      panel.fullContent = newFull;
+      await this.app.vault.modify(panel.file, newFull);
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Edit mode
-  // ═══════════════════════════════════════════════════════════════════════
-
-  private enterEditMode(panel: SectionPanel): void {
-    if (panel.editing) return;
-    panel.editing = true;
-
-    panel.renderEl.addClass("cornell-render-hidden");
-    panel.editorEl.removeClass("cornell-editor-hidden");
-    panel.editorEl.value = panel.content;
-    panel.editorEl.focus();
-  }
-
-  private async commitPanelEdit(panel: SectionPanel): Promise<void> {
-    if (!panel.editing) return;
-    panel.editing = false;
-
-    panel.content = panel.editorEl.value;
-    panel.editorEl.addClass("cornell-editor-hidden");
-    panel.renderEl.removeClass("cornell-render-hidden");
-
-    await this.savePanelContent(panel);
-    this.renderPanel(panel);
-    this.refreshStatusBar();
-
-    // Update manifest modified time
-    this.manifest.modified = new Date().toISOString();
-    this.requestSave();
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // Rendering
-  // ═══════════════════════════════════════════════════════════════════════
-
-  private renderPanel(panel: SectionPanel): void {
-    panel.renderEl.empty();
-
-    if (!panel.content.trim()) {
-      const placeholders: Record<SectionKey, string> = {
-        cues: "Ключевые вопросы, идеи, термины...\nНажмите, чтобы редактировать",
-        notes: "Основные записи лекции / материала...\nНажмите, чтобы редактировать",
-        summary: "Краткое резюме — основные выводы...\nНажмите, чтобы редактировать",
-      };
-      panel.renderEl.createDiv({
-        cls: "cornell-placeholder",
-        text: placeholders[panel.key],
-      });
-      return;
+      // Update manifest modified time
+      this.manifest.modified = new Date().toISOString();
+      this.requestSave();
+    } finally {
+      panel.saving = false;
     }
-
-    const sourcePath = panel.file?.path ?? this.file?.path ?? "";
-    MarkdownRenderer.render(
-      this.app,
-      panel.content,
-      panel.renderEl,
-      sourcePath,
-      this,
-    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════
