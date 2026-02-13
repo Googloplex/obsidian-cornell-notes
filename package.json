@@ -5,7 +5,9 @@
   "main": "main.js",
   "scripts": {
     "build": "esbuild main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --target=es2018",
-    "dev": "esbuild main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --target=es2018 --watch"
+    "dev": "esbuild main.ts --bundle --external:obsidian --outfile=main.js --format=cjs --platform=node --target=es2018 --watch",
+    "release": "npm run build && node -e \"const fs=require('fs');const d='release/cornell-notes';fs.mkdirSync(d,{recursive:true});['main.js','manifest.json','styles.css'].forEach(f=>fs.copyFileSync(f,d+'/'+f));console.log('Release ready: '+d)\"",
+    "deploy": "npm run release && node scripts/deploy.js"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
